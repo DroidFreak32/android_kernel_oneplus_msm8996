@@ -3971,7 +3971,7 @@ static int wma_extscan_hotlist_match_event_handler(void *handle,
 		numap = WMA_EXTSCAN_MAX_HOTLIST_ENTRIES;
 	}
 	buf_len = sizeof(wmi_extscan_hotlist_match_event_fixed_param) +
-			(4 * sizeof(uint32_t)) +
+			WMI_TLV_HDR_SIZE +
 			(numap * sizeof(wmi_extscan_wlan_descriptor));
 	if (buf_len > len) {
 		WMA_LOGE("Invalid buf len from FW %d numap %d", len, numap);
@@ -4012,6 +4012,11 @@ static int wma_extscan_hotlist_match_event_handler(void *handle,
 		dest_ap->ieLength = src_hotlist-> ie_length;
 		WMI_MAC_ADDR_TO_CHAR_ARRAY(&src_hotlist->bssid,
 						dest_ap->bssid);
+		if (src_hotlist->ssid.ssid_len > SIR_MAC_MAX_SSID_LENGTH) {
+			WMA_LOGE("%s Invalid SSID len %d, truncating",
+				__func__, src_hotlist->ssid.ssid_len);
+			src_hotlist->ssid.ssid_len = SIR_MAC_MAX_SSID_LENGTH;
+		}
 		vos_mem_copy(dest_ap->ssid, src_hotlist->ssid.ssid,
 					src_hotlist->ssid.ssid_len);
 		dest_ap->ssid[src_hotlist->ssid.ssid_len] = '\0';
@@ -4186,6 +4191,13 @@ static int wma_group_num_bss_to_scan_id(const u_int8_t *cmd_param_info,
 			WMI_MAC_ADDR_TO_CHAR_ARRAY(&src_hotlist->bssid,
 						ap->bssid);
 
+			if (src_hotlist->ssid.ssid_len >
+			    SIR_MAC_MAX_SSID_LENGTH) {
+				WMA_LOGD("%s Invalid SSID len %d, truncating",
+					 __func__, src_hotlist->ssid.ssid_len);
+				src_hotlist->ssid.ssid_len =
+						SIR_MAC_MAX_SSID_LENGTH;
+			}
 			vos_mem_copy(ap->ssid, src_hotlist->ssid.ssid,
 					src_hotlist->ssid.ssid_len);
 			ap->ssid[src_hotlist->ssid.ssid_len] = '\0';
@@ -4494,8 +4506,12 @@ static int wma_passpoint_match_event_handler(void *handle,
 			WMA_SVC_MSG_MAX_SIZE) {
 		WMA_LOGE("IE Length: %d or ANQP Length: %d is huge",
 				event->ie_length, event->anqp_length);
-		VOS_ASSERT(0);
 		return -EINVAL;
+	}
+	if (event->ssid.ssid_len > SIR_MAC_MAX_SSID_LENGTH) {
+		WMA_LOGD("%s: Invalid ssid len %d, truncating",
+			__func__, event->ssid.ssid_len);
+		event->ssid.ssid_len = SIR_MAC_MAX_SSID_LENGTH;
 	}
 	dest_match = vos_mem_malloc(sizeof(*dest_match) +
 				event->ie_length + event->anqp_length);
@@ -7019,7 +7035,8 @@ static int wma_stats_ext_event_handler(void *handle, u_int8_t *event_buf,
 	alloc_len += stats_ext_info->data_len;
 
 	if (stats_ext_info->data_len > (WMA_SVC_MSG_MAX_SIZE -
-	    sizeof(*stats_ext_info))) {
+	    sizeof(*stats_ext_info)) ||
+	    stats_ext_info->data_len > param_buf->num_data) {
 		WMA_LOGE("Excess data_len:%d", stats_ext_info->data_len);
 		VOS_ASSERT(0);
 		return -EINVAL;
@@ -21527,7 +21544,15 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 	}
 
 	vos_event_set(&wma->wma_resume_event);
-
+	if (param_buf->wow_packet_buffer) {
+		wow_buf_pkt_len = *(uint32_t *)param_buf->wow_packet_buffer;
+		if (wow_buf_pkt_len > (param_buf->num_wow_packet_buffer - 4)) {
+			WMA_LOGE("Invalid wow buf pkt len from firmware, wow_buf_pkt_len: %u, num_wow_packet_buffer: %u",
+					wow_buf_pkt_len,
+					param_buf->num_wow_packet_buffer);
+			return -EINVAL;
+		}
+	}
 	switch (wake_info->wake_reason) {
 	case WOW_REASON_AUTH_REQ_RECV:
 	case WOW_REASON_ASSOC_REQ_RECV:
@@ -21541,9 +21566,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 		wake_lock_duration =
 			wma_wow_get_wakelock_duration(wake_info->wake_reason);
 		if (param_buf->wow_packet_buffer) {
-			/* First 4-bytes of wow_packet_buffer is the length */
-			vos_mem_copy((uint8_t *) &wow_buf_pkt_len,
-				param_buf->wow_packet_buffer, 4);
 			if (wow_buf_pkt_len)
 				wma_wow_dump_mgmt_buffer(
 					param_buf->wow_packet_buffer,
@@ -21631,9 +21653,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 	case WOW_REASON_PATTERN_MATCH_FOUND:
 		WMA_LOGD("Wake up for Rx packet, dump starting from ethernet hdr");
 		if (param_buf->wow_packet_buffer) {
-		    /* First 4-bytes of wow_packet_buffer is the length */
-		    vos_mem_copy((u_int8_t *) &wow_buf_pkt_len,
-			param_buf->wow_packet_buffer, 4);
 			if (wow_buf_pkt_len) {
 				uint8_t *data;
 
@@ -21670,8 +21689,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 		if (param_buf->wow_packet_buffer) {
 		    /* Roam event is embedded in wow_packet_buffer */
 		    WMA_LOGD("Host woken up because of roam event");
-		    vos_mem_copy((u_int8_t *) &wow_buf_pkt_len,
-				param_buf->wow_packet_buffer, 4);
 		    WMA_LOGD("wow_packet_buffer dump");
 				vos_trace_hex_dump(VOS_MODULE_ID_WDA,
 				VOS_TRACE_LEVEL_DEBUG,
@@ -21699,8 +21716,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 		if (param_buf->wow_packet_buffer) {
 		    /* station kickout event embedded in wow_packet_buffer */
 		    WMA_LOGD("Host woken up because of sta_kickout event");
-		    vos_mem_copy((u_int8_t *) &wow_buf_pkt_len,
-				param_buf->wow_packet_buffer, 4);
 		    WMA_LOGD("wow_packet_buffer dump");
 				vos_trace_hex_dump(VOS_MODULE_ID_WDA,
 				VOS_TRACE_LEVEL_DEBUG,
@@ -21724,8 +21739,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 		WMA_LOGD("Host woken up because of extscan reason");
 		wma_wow_wake_up_stats(wma, NULL, 0, WOW_REASON_EXTSCAN);
 		if (param_buf->wow_packet_buffer) {
-			wow_buf_pkt_len =
-				*(uint32_t *)param_buf->wow_packet_buffer;
 			wma_extscan_wow_event_callback(handle,
 				(u_int8_t *)(param_buf->wow_packet_buffer + 4),
 				wow_buf_pkt_len);
@@ -21742,8 +21755,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 			WMA_LOGD("Host woken up because of rssi breach reason");
 			/* rssi breach event is embedded in wow_packet_buffer */
 			if (param_buf->wow_packet_buffer) {
-				vos_mem_copy((u_int8_t *) &wow_buf_pkt_len,
-					param_buf->wow_packet_buffer, 4);
 				if (wow_buf_pkt_len >= sizeof(param)) {
 					param.fixed_param =
 					(wmi_rssi_breach_event_fixed_param *)
@@ -21778,8 +21789,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 	case WOW_REASON_NAN_DATA:
 		WMA_LOGD(FL("Host woken up for NAN data event from FW"));
 		if (param_buf->wow_packet_buffer) {
-			wow_buf_pkt_len =
-				*(uint32_t *)param_buf->wow_packet_buffer;
 			WMA_LOGD(FL("wow_packet_buffer dump"));
 			vos_trace_hex_dump(VOS_MODULE_ID_WDA,
 				VOS_TRACE_LEVEL_DEBUG,
@@ -21812,8 +21821,6 @@ static int wma_wow_wakeup_host_event(void *handle, u_int8_t *event,
 				WOW_REASON_OEM_RESPONSE_EVENT);
 		if (param_buf->wow_packet_buffer) {
 			WMA_LOGD(FL("Host woken up by OEM Response event"));
-			wow_buf_pkt_len =
-				*(uint32_t *)param_buf->wow_packet_buffer;
 			vos_trace_hex_dump(VOS_MODULE_ID_WDA,
                                 VOS_TRACE_LEVEL_DEBUG,
                                 param_buf->wow_packet_buffer,
@@ -31892,6 +31899,7 @@ static int wma_apfind_evt_handler(void *handle, u_int8_t *event,
 	u_int8_t ssid_tmp[WMI_MAX_SSID_LEN + 1];
 	u_int8_t *mac;
 	u_int32_t vdev_id;
+	u_int32_t buf_len;
 
 	if (!param_buf) {
 		WMA_LOGE("Invalid APFIND event buffer");
@@ -31899,8 +31907,36 @@ static int wma_apfind_evt_handler(void *handle, u_int8_t *event,
 	}
 
 	apfind_event_hdr = param_buf->hdr;
-	WMA_LOGD("APFIND event received, id=%d, data_length=%d",
-		apfind_event_hdr->event_type, apfind_event_hdr->data_len);
+	WMA_LOGD("APFIND event received, id=%d, data_len=%d",
+		 apfind_event_hdr->event_type, apfind_event_hdr->data_len);
+
+	/* data_len = WMI_TLV_HDR_SIZE + length of data */
+	if (apfind_event_hdr->data_len <= WMI_TLV_HDR_SIZE) {
+		WMA_LOGE("APFIND event with no data");
+		return -EINVAL;
+	}
+
+	buf_len = param_buf->num_data;
+	if (buf_len != (apfind_event_hdr->data_len - WMI_TLV_HDR_SIZE)) {
+		WMA_LOGE("APFIND event with unmatched len: %u - %u",
+			 buf_len, apfind_event_hdr->data_len);
+		return -EINVAL;
+	}
+
+	if ((apfind_event_hdr->data_len >
+	     (len - sizeof(wmi_apfind_event_hdr))) ||
+	    (apfind_event_hdr->data_len >
+	     (WMA_SVC_MSG_MAX_SIZE - sizeof(wmi_apfind_event_hdr)))) {
+		WMA_LOGE("APFIND event with invalid data_len: %u",
+			 apfind_event_hdr->data_len);
+		return -EINVAL;
+	}
+
+	if (buf_len < WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN) {
+		WMA_LOGE("APFIND event with invalid buf_len: %u", buf_len);
+		return -EINVAL;
+	}
+
 	buf = param_buf->data;
 	A_MEMZERO(ssid_tmp, sizeof(ssid_tmp));
 	A_MEMCPY(ssid_tmp, buf, WMI_MAX_SSID_LEN);
@@ -31909,12 +31945,10 @@ static int wma_apfind_evt_handler(void *handle, u_int8_t *event,
 
 	buf = &param_buf->data[WMI_MAX_SSID_LEN];
 	mac = buf;
-	WMA_LOGD("%s, APFIND dump mac=0x%08X-0x%08X",
-		__func__, *(u_int32_t *)buf, *(u_int32_t *)(buf + sizeof(u_int32_t)));
+	WMA_LOGD("%s, APFIND dump mac=%pM", __func__, mac);
 
-	if (apfind_event_hdr->data_len >=
-		(WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN + sizeof(vdev_id)
-		+ sizeof(apfind_event_hdr->tlv_header))) {
+	if (buf_len >=
+	    (WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN + sizeof(vdev_id))) {
 		/* FW had the tlv_header len calculated into the data_len */
 		buf = &param_buf->data[WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN];
 		vdev_id = *(u_int32_t*) buf;
@@ -32349,7 +32383,8 @@ static int wma_ibss_peer_info_event_handler(void *handle, u_int8_t *data,
     }
 
     /*sanity check*/
-    if ((num_peers > 32) || (NULL == peer_info))
+    if ((num_peers > 32) || (num_peers > param_tlvs->num_peer_info) ||
+	(!peer_info))
     {
        WMA_LOGE("%s: Invalid event data from target num_peers %d peer_info %pK",
            __func__, num_peers, peer_info);

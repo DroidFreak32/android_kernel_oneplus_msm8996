@@ -432,6 +432,49 @@ static CountryInfoTable_t countryInfoTable =
     }
 };
 
+/*
+ *  ETSI is updating EN 301 893, which specifies 5 GHz channel access
+ *  in Europe
+ */
+static const v_COUNTRYCODE_t etsi_europe_country[] = {
+	{'A', 'T'},
+	{'B', 'E'},
+	{'B', 'G'},
+	{'C', 'Z'},
+	{'D', 'K'},
+	{'E', 'E'},
+	{'F', 'R'},
+
+	{'D', 'E'},
+	{'I', 'S'},
+	{'I', 'E'},
+	{'I', 'T'},
+	{'E', 'L'},
+	{'E', 'S'},
+	{'C', 'Y'},
+
+	{'L', 'V'},
+	{'L', 'I'},
+	{'L', 'T'},
+	{'L', 'U'},
+	{'H', 'U'},
+	{'M', 'T'},
+	{'N', 'L'},
+
+	{'N', 'O'},
+	{'P', 'L'},
+	{'P', 'T'},
+	{'R', 'O'},
+	{'S', 'I'},
+	{'S', 'K'},
+	{'T', 'R'},
+
+	{'F', 'I'},
+	{'S', 'E'},
+	{'C', 'H'},
+	{'U', 'K'},
+	{'H', 'R'},
+};
 typedef struct nvEFSTable_s
 {
    sHalNv     halnv;
@@ -624,6 +667,17 @@ struct ieee80211_regdomain *vos_world_regdomain(struct regulatory *reg)
    }
 }
 
+bool vos_is_etsi_europe_country(uint8_t *country)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(etsi_europe_country); i++) {
+		if (country[0] == etsi_europe_country[i][0] &&
+		    country[1] == etsi_europe_country[i][1])
+			return true;
+	}
+	return false;
+}
 /**
  * vos_reset_global_reg_params - Reset global static reg params
  *
@@ -909,7 +963,7 @@ static void vos_set_5g_channel_params(uint16_t oper_ch,
 				      struct ch_params_s *ch_params)
 {
 	eNVChannelEnabledType chan_state = NV_CHANNEL_ENABLE;
-	const struct bonded_chan *bonded_chan_ptr = NULL;
+	const struct bonded_chan *bonded_chan_ptr;
 	uint16_t center_chan;
 
 	if (CH_WIDTH_MAX <= ch_params->ch_width)
