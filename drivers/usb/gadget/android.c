@@ -3307,6 +3307,7 @@ static struct android_usb_function *supported_functions[] = {
 	[ANDROID_RMNET_GSI] = &rmnet_gsi_function,
 	[ANDROID_MBIM_GSI] = &mbim_gsi_function,
 	[ANDROID_DPL_GSI] = &dpl_gsi_function,
+	&hid_function,
 	NULL
 };
 
@@ -3629,8 +3630,8 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 	char buf[256], *b;
 	char aliases[256], *a;
 	int err;
-	int is_ffs;
 	int ffs_enabled = 0;
+	int hid_enabled = 0;
 
 	mutex_lock(&dev->mutex);
 
@@ -3672,38 +3673,50 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 		curr_conf = curr_conf->next;
 		while (conf_str) {
 			name = strsep(&conf_str, ",");
-			is_ffs = 0;
 			strlcpy(aliases, dev->ffs_aliases, sizeof(aliases));
 			a = aliases;
 
 			while (a) {
 				char *alias = strsep(&a, ",");
 				if (alias && !strcmp(name, alias)) {
-					is_ffs = 1;
+					name = "ffs";
 					break;
 				}
 			}
 
-			if (is_ffs) {
-				if (ffs_enabled)
-					continue;
-				err = android_enable_function(dev, conf, "ffs");
-				if (err)
-					pr_err("android_usb: Cannot enable ffs (%d)",
-									err);
-				else
-					ffs_enabled = 1;
+			if (ffs_enabled && !strcmp(name, "ffs"))
 				continue;
-			}
+
+			if (hid_enabled && !strcmp(name, "hid"))
+				continue;
 
 			if (!strcmp(name, "rndis") &&
 				!strcmp(strim(rndis_transports), "BAM2BAM_IPA"))
 				name = "rndis_qc";
 
 			err = android_enable_function(dev, conf, name);
+			if (err) {
+				pr_err("android_usb: Cannot enable '%s' (%d)",
+							name, err);
+				continue;
+			}
+
+			if (!strcmp(name, "ffs"))
+				ffs_enabled = 1;
+
+			if (!strcmp(name, "hid"))
+				hid_enabled = 1;
+		}
+
+		/* Always enable HID gadget function. */
+		if (!hid_enabled) {
+			name = "hid";
+			err = android_enable_function(dev, conf, name);
 			if (err)
 				pr_err("android_usb: Cannot enable '%s' (%d)",
 							name, err);
+			else
+				hid_enabled = 1;			
 		}
 	}
 
