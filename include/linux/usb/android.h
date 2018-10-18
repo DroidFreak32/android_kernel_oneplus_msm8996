@@ -31,7 +31,6 @@ enum android_function_index {
 	ANDROID_SERIAL,
 	ANDROID_CCID,
 	ANDROID_ACM,
-	ANDROID_HID,
 	ANDROID_MTP,
 	ANDROID_PTP,
 	ANDROID_RNDIS,
@@ -79,8 +78,6 @@ static enum android_function_index name_to_func_idx(const char *name)
 		return ANDROID_CCID;
 	if (!strncasecmp("ACM", name, FUNC_NAME_LEN))
 		return ANDROID_ACM;
-	if (!strncasecmp("HID", name, FUNC_NAME_LEN))
-		return ANDROID_HID;
 	if (!strncasecmp("MTP", name, FUNC_NAME_LEN))
 		return ANDROID_MTP;
 	if (!strncasecmp("PTP", name, FUNC_NAME_LEN))
