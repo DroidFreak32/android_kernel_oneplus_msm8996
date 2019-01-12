@@ -46,18 +46,11 @@
  */
 
 #define _GNU_SOURCE
-#ifdef __APPLE__
-	#include <libkern/OSByteOrder.h>
-		#define bswap_16(x) OSSwapInt16(x)
-		#define bswap_32(x) OSSwapInt32(x)
-		#define bswap_64(x) OSSwapInt64(x)
-	#include <mach/error.h>
-#else
-	#include <byteswap.h>
-	#include <error.h>
-#endif
+
+#include <byteswap.h>
 #include <elf.h>
 #include <errno.h>
+#include <error.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
