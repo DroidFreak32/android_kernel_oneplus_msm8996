@@ -44,8 +44,14 @@
  * If the soft-float flag is set, this program clears it.  That's all
  * it does.
  */
-
-#include <byteswap.h>
+#ifdef __APPLE__
+	#include <libkern/OSByteOrder.h>
+	#define bswap_16(x) OSSwapInt16(x)
+	#define bswap_32(x) OSSwapInt32(x)
+	#define bswap_64(x) OSSwapInt64(x)
+#else
+	#include <byteswap.h>
+#endif
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
