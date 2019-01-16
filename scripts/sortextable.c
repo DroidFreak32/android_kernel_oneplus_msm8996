@@ -20,7 +20,11 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <getopt.h>
-#include <elf.h>
+#ifdef __APPLE__
+	#include "mod/elf.h"
+#else
+	#include <elf.h>
+#endif
 #include <fcntl.h>
 #include <setjmp.h>
 #include <stdio.h>
