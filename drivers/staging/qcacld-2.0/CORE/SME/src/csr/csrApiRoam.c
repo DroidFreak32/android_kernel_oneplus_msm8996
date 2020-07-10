@@ -2100,6 +2100,8 @@ eHalStatus csrChangeDefaultConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pPa
         pMac->roam.configParam.rx_aggregation_size =
                                pParam->rx_aggregation_size;
 
+        pMac->roam.configParam.gStaLocalEDCAEnable =
+                               pParam->gStaLocalEDCAEnable;
         pMac->roam.configParam.enable_edca_params =
                                pParam->enable_edca_params;
         pMac->roam.configParam.edca_vo_cwmin = pParam->edca_vo_cwmin;
@@ -9366,7 +9368,7 @@ void csrRoamJoinedStateMsgProcessor( tpAniSirGlobal pMac, void *pMsgBuf )
             tSirSmeAssocIndToUpperLayerCnf *pUpperLayerAssocCnf;
             tCsrRoamInfo roamInfo;
             tCsrRoamInfo *pRoamInfo = NULL;
-            tANI_U32 sessionId = 0;
+            tANI_U32 sessionId;
             eHalStatus status;
             smsLog( pMac, LOG1, FL("ASSOCIATION confirmation can be given to upper layer "));
             vos_mem_set(&roamInfo, sizeof(tCsrRoamInfo), 0);
@@ -16826,7 +16828,7 @@ eHalStatus csrGetSnr(tpAniSirGlobal pMac,
 {
    eHalStatus status = eHAL_STATUS_SUCCESS;
    vos_msg_t  msg;
-   tANI_U32 sessionId = 0;
+   tANI_U32 sessionId;
 
    tAniGetSnrReq *pMsg;
 

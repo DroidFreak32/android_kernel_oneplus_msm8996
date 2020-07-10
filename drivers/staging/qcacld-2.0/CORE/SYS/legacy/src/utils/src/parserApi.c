@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -2209,7 +2209,7 @@ tSirRetStatus sirvalidateandrectifyies(tpAniSirGlobal pMac,
                                     tANI_U32 *nMissingRsnBytes)
 {
     tANI_U32 length = SIZE_OF_FIXED_PARAM;
-    tANI_U8 *refFrame = NULL;
+    tANI_U8 *refFrame;
 
     /* Frame contains atleast one IE */
     if (nFrameBytes > (SIZE_OF_FIXED_PARAM + 2)) {
@@ -2219,8 +2219,6 @@ tSirRetStatus sirvalidateandrectifyies(tpAniSirGlobal pMac,
             length += (tANI_U32)(SIZE_OF_TAG_PARAM_NUM + SIZE_OF_TAG_PARAM_LEN
                                  + (*(refFrame + SIZE_OF_TAG_PARAM_NUM)));
         }
-	if (!refFrame)
-		return eSIR_FAILURE;
         if (length != nFrameBytes) {
             /*
              * Workaround : Some APs may not include RSN Capability but
@@ -5490,16 +5488,22 @@ tSirRetStatus PopulateDot11fAssocResWscIE(tpAniSirGlobal pMac,
 {
     tDot11fIEWscAssocReq parsedWscAssocReq = { 0, };
     tANI_U8         *wscIe;
+    tANI_U32 status;
 
 
     wscIe = limGetWscIEPtr(pMac, pRcvdAssocReq->addIE.addIEdata, pRcvdAssocReq->addIE.length);
     if(wscIe != NULL)
     {
         // retreive WSC IE from given AssocReq
-        dot11fUnpackIeWscAssocReq( pMac,
+        status = dot11fUnpackIeWscAssocReq( pMac,
                                     wscIe + 2 + 4,  // EID, length, OUI
                                     wscIe[ 1 ] - 4, // length without OUI
                                     &parsedWscAssocReq );
+        if (!DOT11F_SUCCEEDED(status))
+        {
+            limLog(pMac, LOGE, FL("Unpack wsc failed status: (0x%08x)"), status);
+            return eSIR_HAL_INPUT_INVALID;
+        }
         pDot11f->present = 1;
         // version has to be 0x10
         pDot11f->Version.present = 1;

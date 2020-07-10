@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -1771,6 +1771,12 @@ int dbglog_report_enable(wmi_unified_t  wmi_handle, bool isenable)
 {
     int bitmap[2] = {0};
 
+    if (isenable > TRUE) {
+        AR_DEBUG_PRINTF(ATH_DEBUG_ERR, ("dbglog_report_enable:Invalid value %d\n",
+        isenable));
+        return -EINVAL;
+    }
+
     if(isenable){
 	/* set the vap enable bitmap */
         dbglog_set_vap_enable_bitmap(wmi_handle, 0xFFFF);
@@ -1889,7 +1895,7 @@ dbglog_print_raw_data(A_UINT32 *buffer, A_UINT32 length)
     char parseArgsString[DBGLOG_PARSE_ARGS_STRING_LENGTH];
     char *dbgidString;
 
-    while (count < length) {
+    while ((count + 1) < length) {
 
         debugid = DBGLOG_GET_DBGID(buffer[count + 1]);
         moduleid = DBGLOG_GET_MODULEID(buffer[count + 1]);
@@ -1901,12 +1907,15 @@ dbglog_print_raw_data(A_UINT32 *buffer, A_UINT32 length)
             OS_MEMZERO(parseArgsString, sizeof(parseArgsString));
             totalWriteLen = 0;
 
+            if (!numargs || (count + numargs + 2 > length))
+                goto skip_args_processing;
+
             for (curArgs = 0; curArgs < numargs; curArgs++){
                 // Using sprintf_s instead of sprintf, to avoid length overflow
                 writeLen = snprintf(parseArgsString + totalWriteLen, DBGLOG_PARSE_ARGS_STRING_LENGTH - totalWriteLen, "%x ", buffer[count + 2 + curArgs]);
                 totalWriteLen += writeLen;
             }
-
+skip_args_processing:
             if (debugid < MAX_DBG_MSGS){
                 dbgidString = DBG_MSG_ARR[moduleid][debugid];
                 if (dbgidString != NULL) {
@@ -2098,6 +2107,9 @@ send_diag_netlink_data(const u_int8_t *buffer, A_UINT32 len, A_UINT32 cmd)
         slot->dropped = get_version;
         memcpy(slot->payload, buffer, len);
 
+        /* Need to pad each record to fixed length ATH6KL_FWLOG_PAYLOAD_SIZE */
+        memset(slot->payload + len, 0, ATH6KL_FWLOG_PAYLOAD_SIZE - len);
+
         res = nl_srv_bcast(skb_out);
         if ((res < 0) && (res != -ESRCH)) {
             AR_DEBUG_PRINTF(ATH_DEBUG_RSVD1,
@@ -2160,6 +2172,9 @@ dbglog_process_netlink_data(wmi_unified_t wmi_handle, const u_int8_t *buffer,
         slot->length = cpu_to_le32(len);
         slot->dropped = cpu_to_le32(dropped);
         memcpy(slot->payload, buffer, len);
+
+        /* Need to pad each record to fixed length ATH6KL_FWLOG_PAYLOAD_SIZE */
+        memset(slot->payload + len, 0, ATH6KL_FWLOG_PAYLOAD_SIZE - len);
 
         res = nl_srv_bcast(skb_out);
         if ((res < 0) && (res != -ESRCH))
@@ -2376,6 +2391,11 @@ dbglog_parse_debug_logs(ol_scn_t scn, u_int8_t *data, u_int32_t datalen)
 
         datap = param_buf->bufp;
         len = param_buf->num_bufp;
+    }
+
+    if (len < sizeof(dropped)) {
+        AR_DEBUG_PRINTF(ATH_DEBUG_ERR, ("Invalid length\n"));
+        return A_ERROR;
     }
 
     dropped = *((A_UINT32 *)datap);
@@ -4325,7 +4345,7 @@ int dbglog_debugfs_init(wmi_unified_t wmi_handle)
 {
 
     wmi_handle->debugfs_phy = debugfs_create_dir(CLD_DEBUGFS_DIR, NULL);
-    if (IS_ERR_OR_NULL(wmi_handle->debugfs_phy))
+    if (!wmi_handle->debugfs_phy)
         return -ENOMEM;
 
     debugfs_create_file(DEBUGFS_BLOCK_NAME, S_IRUSR, wmi_handle->debugfs_phy, &wmi_handle->dbglog,
